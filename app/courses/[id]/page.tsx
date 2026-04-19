@@ -102,6 +102,15 @@ function ExamCard({ exams }: { exams: TimetableEvent[] }) {
         const days = daysUntil(exam.start);
         const urgent = days >= 0 && days <= 7;
         const passed = days < 0;
+        const isResit = exam.eventTypeGuess === 'Re-Sit';
+
+        // Resit uses amber; exam uses red/cyan
+        const accentColor = isResit ? '#f59e0b' : TL.red;
+        const idleGradient = isResit
+          ? 'linear-gradient(135deg, rgba(245,158,11,0.09) 0%, rgba(234,179,8,0.07) 100%)'
+          : 'linear-gradient(135deg, rgba(30,200,232,0.07) 0%, rgba(147,51,234,0.10) 100%)';
+        const idleBorder = isResit ? 'rgba(245,158,11,0.25)' : 'rgba(30,200,232,0.20)';
+
         return (
           <div
             key={exam.id}
@@ -110,17 +119,17 @@ function ExamCard({ exams }: { exams: TimetableEvent[] }) {
               background: passed
                 ? 'transparent'
                 : urgent
-                ? `linear-gradient(135deg, ${TL.red}18 0%, ${TL.yellow}10 100%)`
-                : 'linear-gradient(135deg, rgba(30,200,232,0.07) 0%, rgba(147,51,234,0.10) 100%)',
-              borderColor: passed ? 'var(--border)' : urgent ? `${TL.red}40` : 'rgba(30,200,232,0.20)',
+                ? `linear-gradient(135deg, ${accentColor}18 0%, ${accentColor}0a 100%)`
+                : idleGradient,
+              borderColor: passed ? 'var(--border)' : urgent ? `${accentColor}50` : idleBorder,
             }}
           >
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <span
                 className="text-[10px] font-bold uppercase tracking-[0.18em]"
-                style={{ color: passed ? 'var(--muted-foreground)' : urgent ? TL.red : '#1ec8e8' }}
+                style={{ color: passed ? 'var(--muted-foreground)' : urgent ? accentColor : isResit ? '#f59e0b' : '#1ec8e8' }}
               >
-                Exam
+                {exam.eventTypeGuess ?? 'Exam'}
               </span>
               <ExamCountdown days={days} />
             </div>
@@ -209,15 +218,23 @@ function CourseDetailContent() {
   const code = parseCourseCode(course.course_code);
   const health = getCourseHealth(course, courseAssignments);
 
-  const courseExams = eventsForCourse(timetableEvents, code)
-    .filter((e) => e.eventTypeGuess === 'Exam')
-    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-  // Show upcoming exams first, then passed (last 30 days) as faded entries
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
-  const visibleExams = courseExams.filter(
-    (e) => new Date(e.start) >= thirtyDaysAgo
-  );
+
+  const allCourseEvents = eventsForCourse(timetableEvents, code);
+  const courseExams = allCourseEvents
+    .filter((e) => e.eventTypeGuess === 'Exam')
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  const courseResits = allCourseEvents
+    .filter((e) => e.eventTypeGuess === 'Re-Sit')
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+  const hasPassedExam = courseExams.some((e) => new Date(e.start) < now);
+
+  const visibleExams = [
+    ...courseExams.filter((e) => new Date(e.start) >= thirtyDaysAgo),
+    ...(hasPassedExam ? courseResits.filter((e) => new Date(e.start) >= thirtyDaysAgo) : []),
+  ].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
   const { status, reason, nextActions, stats } = health;
 
   const sorted = [...courseAssignments].sort((a, b) => {
