@@ -13,7 +13,26 @@ export interface TimetableEvent {
   isAllDay: boolean;
 }
 
-function guessEventType(title: string): string | null {
+export function parseDescriptionField(description: string | null, key: string): string | null {
+  if (!description) return null;
+  const match = description.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
+  return match ? match[1].trim() : null;
+}
+
+function guessEventType(title: string, description: string | null): string | null {
+  // Primary: read "Type:" line from description (EUR timetable format)
+  const rawType = parseDescriptionField(description, 'Type');
+  if (rawType) {
+    const t = rawType.toLowerCase();
+    if (t.includes('tentamen') || t.includes('toets') || t.includes('exam')) return 'Exam';
+    if (t.includes('hoorcollege') || t.includes('lecture')) return 'Lecture';
+    if (t.includes('werkcollege') || t.includes('tutorial')) return 'Tutorial';
+    if (t.includes('workshop')) return 'Workshop';
+    if (t.includes('seminar')) return 'Seminar';
+    // Pass through the raw label (capitalised) for unknown types
+    return rawType.charAt(0).toUpperCase() + rawType.slice(1);
+  }
+  // Fallback: title keywords
   const lower = title.toLowerCase();
   if (lower.includes('exam') || lower.includes('tentamen') || lower.includes('toets')) return 'Exam';
   if (lower.includes('workshop')) return 'Workshop';
@@ -111,7 +130,7 @@ function makeEvent(
     id,
     title,
     courseCodeShort,
-    eventTypeGuess: guessEventType(title),
+    eventTypeGuess: guessEventType(title, description),
     location: location || null,
     description: description || null,
     start: startIso,

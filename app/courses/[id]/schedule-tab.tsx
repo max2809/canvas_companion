@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { useCanvasData } from '@/lib/hooks';
-import { eventsForCourse } from '@/lib/timetable';
+import { eventsForCourse, parseDescriptionField } from '@/lib/timetable';
 import type { TimetableEvent } from '@/lib/timetable';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -178,7 +178,11 @@ function EventRow({
   muted?: boolean;
 }) {
   const displayTitle = stripCodePrefix(event.title, courseCode);
-  const typeClass = event.eventTypeGuess ? EVENT_TYPE_COLORS[event.eventTypeGuess] : null;
+  const typeClass = event.eventTypeGuess
+    ? (EVENT_TYPE_COLORS[event.eventTypeGuess] ?? 'bg-secondary text-muted-foreground')
+    : null;
+  const enrolled = parseDescriptionField(event.description, 'Enrolled for this activity');
+  const isEnrolled = enrolled?.toLowerCase() === 'yes';
 
   return (
     <div
@@ -201,12 +205,19 @@ function EventRow({
           )}
           <span className="font-medium truncate">{displayTitle}</span>
         </div>
-        {event.location && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="size-3 shrink-0" />
-            <span className="truncate">{event.location}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          {event.location && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <MapPin className="size-3 shrink-0" />
+              <span className="truncate">{event.location}</span>
+            </div>
+          )}
+          {enrolled && (
+            <span className={`text-xs ${isEnrolled ? 'text-green-400' : 'text-muted-foreground'}`}>
+              {isEnrolled ? '✓ Enrolled' : 'Not enrolled'}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
