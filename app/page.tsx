@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { RefreshCcw, ExternalLink, BookOpen, CalendarCheck, MapPin, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCcw, ExternalLink, BookOpen, CalendarCheck, MapPin, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { useCanvasData } from '@/lib/hooks';
 import type { EnrichedAssignment } from '@/lib/canvas';
@@ -192,12 +192,17 @@ function Section({
   accent,
   muted,
   items,
+  collapsible,
+  defaultCollapsed,
 }: {
   title: string;
   accent?: boolean;
   muted?: boolean;
   items: EnrichedAssignment[];
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false);
   if (items.length === 0) return null;
   return (
     <div className="flex flex-col gap-2.5">
@@ -212,12 +217,23 @@ function Section({
         </h2>
         <div className="flex-1 h-px bg-border" />
         <span className="text-[10px] text-muted-foreground">{items.length}</span>
+        {collapsible && (
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={collapsed ? 'Expand section' : 'Collapse section'}
+          >
+            {collapsed ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
+          </button>
+        )}
       </div>
-      <div className="flex flex-col gap-1.5">
-        {items.map((a) => (
-          <AssignmentCard key={`${a.course_id}-${a.id}`} a={a} muted={muted} />
-        ))}
-      </div>
+      {!collapsed && (
+        <div className="flex flex-col gap-1.5">
+          {items.map((a) => (
+            <AssignmentCard key={`${a.course_id}-${a.id}`} a={a} muted={muted} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -555,7 +571,15 @@ export default function DashboardPage() {
             )}
             {hasData && (
               <>
-                <Section title="Overdue" accent items={groups.overdue} />
+                <Section
+                  title="Overdue"
+                  accent
+                  items={groups.overdue}
+                  collapsible
+                  defaultCollapsed={groups.overdue.every(
+                    (a) => !a.due_at || new Date().getTime() - new Date(a.due_at).getTime() >= 3 * 86400000
+                  )}
+                />
                 <Section title="Today" items={groups.today} />
                 <Section title="This Week" items={groups.thisWeek} />
                 <Section title="Upcoming" items={groups.upcoming} />
