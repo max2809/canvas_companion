@@ -164,6 +164,54 @@ function ExamCard({ exams }: { exams: TimetableEvent[] }) {
   );
 }
 
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  Exam: TL.red,
+  'Re-Sit': '#f59e0b',
+  Workshop: '#fbbf24',
+  Tutorial: '#60a5fa',
+  Seminar: '#a78bfa',
+  Lecture: '#4ade80',
+};
+
+function nextEventDateLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const eventDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round((eventDay.getTime() - todayStart.getTime()) / 86_400_000);
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (diff === 0) return `Today · ${time}`;
+  if (diff === 1) return `Tomorrow · ${time}`;
+  if (diff < 7) return `${d.toLocaleDateString('en-GB', { weekday: 'short' })} · ${time}`;
+  return `${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · ${time}`;
+}
+
+function NextClassWidget({ event }: { event: TimetableEvent }) {
+  const color = EVENT_TYPE_COLORS[event.eventTypeGuess ?? ''] ?? 'hsl(220,10%,60%)';
+  const endTime = `${String(new Date(event.end).getHours()).padStart(2, '0')}:${String(new Date(event.end).getMinutes()).padStart(2, '0')}`;
+
+  return (
+    <div className="flex flex-col gap-1.5 text-right shrink-0 max-w-[220px]">
+      <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+        Next class
+      </span>
+      <div className="flex items-center gap-1.5 justify-end">
+        <div className="size-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <span className="text-xs font-semibold" style={{ color }}>
+          {event.eventTypeGuess ?? 'Class'}
+        </span>
+      </div>
+      <span className="text-sm font-medium text-foreground leading-tight">
+        {nextEventDateLabel(event.start)}
+        {!event.isAllDay && <span className="text-muted-foreground">–{endTime}</span>}
+      </span>
+      {event.location && (
+        <span className="text-xs text-muted-foreground truncate">{event.location}</span>
+      )}
+    </div>
+  );
+}
+
 function CourseDetailContent() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -251,6 +299,11 @@ function CourseDetailContent() {
   ].sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
 
   const visibleExams = [...upcomingExamEvents, ...passedExamEvents];
+
+  const nextCourseEvent = allCourseEvents
+    .filter((e) => new Date(e.start) >= now)
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())[0] ?? null;
+
   const { status, reason, nextActions, stats } = health;
 
   const sorted = [...courseAssignments].sort((a, b) => {
@@ -271,18 +324,21 @@ function CourseDetailContent() {
           <ArrowLeft className="size-4" />
           Back to Courses
         </Link>
-        <div className="flex flex-col gap-1.5">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-secondary text-muted-foreground border border-border w-fit">
-            {code}
-          </span>
-          <h1 className="text-2xl font-bold leading-tight gradient-text inline-block">{course.name}</h1>
-          <div className="flex items-center gap-2">
-            <div
-              className={`size-2 rounded-full shrink-0${status === 'red' ? ' animate-pulse' : ''}`}
-              style={{ backgroundColor: TL[status], boxShadow: `0 0 6px ${TL[status]}60` }}
-            />
-            <span className="text-sm text-muted-foreground">{reason}</span>
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-secondary text-muted-foreground border border-border w-fit">
+              {code}
+            </span>
+            <h1 className="text-2xl font-bold leading-tight gradient-text inline-block">{course.name}</h1>
+            <div className="flex items-center gap-2">
+              <div
+                className={`size-2 rounded-full shrink-0${status === 'red' ? ' animate-pulse' : ''}`}
+                style={{ backgroundColor: TL[status], boxShadow: `0 0 6px ${TL[status]}60` }}
+              />
+              <span className="text-sm text-muted-foreground">{reason}</span>
+            </div>
           </div>
+          {nextCourseEvent && <NextClassWidget event={nextCourseEvent} />}
         </div>
       </div>
 
