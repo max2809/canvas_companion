@@ -29,6 +29,7 @@ function guessEventType(title: string, description: string | null): string | nul
     if (t.includes('werkcollege') || t.includes('tutorial')) return 'Tutorial';
     if (t.includes('workshop')) return 'Workshop';
     if (t.includes('seminar')) return 'Seminar';
+    if (t.includes('herkansing') || t.includes('re-sit') || t.includes('resit')) return 'Re-Sit';
     // Pass through the raw label (capitalised) for unknown types
     return rawType.charAt(0).toUpperCase() + rawType.slice(1);
   }
@@ -43,7 +44,8 @@ function guessEventType(title: string, description: string | null): string | nul
 }
 
 function parseCourseCodeFromTitle(title: string): string | null {
-  const match = title.match(/^([A-Z]{2,4}\d{4})/);
+  // Match anywhere in the title (not just at the start) to handle varied EUR formats
+  const match = title.match(/\b([A-Z]{2,4}\d{4})\b/);
   if (!match) return null;
   return parseCourseCode(match[1]);
 }

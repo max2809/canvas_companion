@@ -22,7 +22,7 @@ import { PagesTab } from './pages-tab';
 import { AnnouncementsSection } from './announcements-section';
 import { ManualTab } from './manual-tab';
 import { ScheduleTab } from './schedule-tab';
-import { eventsForCourse } from '@/lib/timetable';
+import { eventsForCourse, parseDescriptionField } from '@/lib/timetable';
 import type { TimetableEvent } from '@/lib/timetable';
 import type { EnrichedAssignment } from '@/lib/canvas';
 
@@ -222,11 +222,20 @@ function CourseDetailContent() {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
 
   const allCourseEvents = eventsForCourse(timetableEvents, code);
+
+  function isResitEvent(e: TimetableEvent): boolean {
+    if (e.eventTypeGuess === 'Re-Sit') return true;
+    const rawType = parseDescriptionField(e.description, 'Type');
+    if (!rawType) return false;
+    const t = rawType.toLowerCase();
+    return t.includes('herkansing') || t.includes('re-sit') || t.includes('resit');
+  }
+
   const courseExams = allCourseEvents
     .filter((e) => e.eventTypeGuess === 'Exam')
     .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
   const courseResits = allCourseEvents
-    .filter((e) => e.eventTypeGuess === 'Re-Sit')
+    .filter(isResitEvent)
     .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
   const hasPassedExam = courseExams.some((e) => new Date(e.start) < now);
