@@ -10,6 +10,7 @@ import {
   XCircle,
   Circle,
   ExternalLink,
+  MapPin,
 } from 'lucide-react';
 import { useCanvasData } from '@/lib/hooks';
 import { getCourseHealth } from '@/lib/traffic-light';
@@ -21,6 +22,8 @@ import { PagesTab } from './pages-tab';
 import { AnnouncementsSection } from './announcements-section';
 import { ManualTab } from './manual-tab';
 import { ScheduleTab } from './schedule-tab';
+import { eventsForCourse } from '@/lib/timetable';
+import type { TimetableEvent } from '@/lib/timetable';
 import type { EnrichedAssignment } from '@/lib/canvas';
 
 const TL = { red: '#f87171', yellow: '#fbbf24', green: '#4ade80' } as const;
@@ -53,6 +56,105 @@ function AssignmentIcon({ a }: { a: EnrichedAssignment }) {
   return <Circle className="size-4 shrink-0 text-muted-foreground" aria-label="Upcoming" />;
 }
 
+function formatExamDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatExamTime(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function daysUntil(iso: string): number {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const examDay = new Date(iso);
+  const examDayStart = new Date(examDay.getFullYear(), examDay.getMonth(), examDay.getDate());
+  return Math.round((examDayStart.getTime() - today.getTime()) / 86_400_000);
+}
+
+function ExamCountdown({ days }: { days: number }) {
+  if (days < 0) return <span className="text-xs text-muted-foreground">Passed</span>;
+  if (days === 0) return <span className="text-sm font-semibold" style={{ color: TL.red }}>Today</span>;
+  if (days <= 7) return (
+    <span className="text-sm font-semibold" style={{ color: TL.yellow }}>
+      in {days} day{days !== 1 ? 's' : ''}
+    </span>
+  );
+  return (
+    <span className="text-sm font-semibold text-muted-foreground">
+      in {days} days
+    </span>
+  );
+}
+
+function ExamCard({ exams }: { exams: TimetableEvent[] }) {
+  if (exams.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {exams.map((exam) => {
+        const days = daysUntil(exam.start);
+        const urgent = days >= 0 && days <= 7;
+        const passed = days < 0;
+        return (
+          <div
+            key={exam.id}
+            className="rounded-2xl border px-5 py-4 flex flex-col gap-3"
+            style={{
+              background: passed
+                ? 'transparent'
+                : urgent
+                ? `linear-gradient(135deg, ${TL.red}18 0%, ${TL.yellow}10 100%)`
+                : 'linear-gradient(135deg, rgba(30,200,232,0.07) 0%, rgba(147,51,234,0.10) 100%)',
+              borderColor: passed ? 'var(--border)' : urgent ? `${TL.red}40` : 'rgba(30,200,232,0.20)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <span
+                className="text-[10px] font-bold uppercase tracking-[0.18em]"
+                style={{ color: passed ? 'var(--muted-foreground)' : urgent ? TL.red : '#1ec8e8' }}
+              >
+                Exam
+              </span>
+              <ExamCountdown days={days} />
+            </div>
+
+            <p
+              className="font-bold leading-tight"
+              style={{
+                fontSize: 'clamp(1.1rem, 2.5vw, 1.5rem)',
+                color: passed ? 'var(--muted-foreground)' : 'var(--foreground)',
+                opacity: passed ? 0.5 : 1,
+              }}
+            >
+              {formatExamDate(exam.start)}
+            </p>
+
+            {!exam.isAllDay && (
+              <p className="text-sm text-muted-foreground">
+                {formatExamTime(exam.start)}–{formatExamTime(exam.end)}
+              </p>
+            )}
+
+            {exam.location && (
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <MapPin className="size-3.5 shrink-0" />
+                {exam.location}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CourseDetailContent() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -61,7 +163,7 @@ function CourseDetailContent() {
   const courseId = Number(params.id);
   const activeTab = (searchParams.get('tab') ?? 'overview') as Tab;
 
-  const { allCourses, assignments, loading } = useCanvasData();
+  const { allCourses, assignments, loading, timetableEvents } = useCanvasData();
 
   const course = allCourses.find((c) => c.id === courseId);
   const courseAssignments = assignments.filter((a) => a.course_id === courseId);
@@ -106,6 +208,16 @@ function CourseDetailContent() {
 
   const code = parseCourseCode(course.course_code);
   const health = getCourseHealth(course, courseAssignments);
+
+  const courseExams = eventsForCourse(timetableEvents, code)
+    .filter((e) => e.eventTypeGuess === 'Exam')
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  // Show upcoming exams first, then passed (last 30 days) as faded entries
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
+  const visibleExams = courseExams.filter(
+    (e) => new Date(e.start) >= thirtyDaysAgo
+  );
   const { status, reason, nextActions, stats } = health;
 
   const sorted = [...courseAssignments].sort((a, b) => {
@@ -164,6 +276,8 @@ function CourseDetailContent() {
       {/* Overview tab */}
       {activeTab === 'overview' && (
         <div className="flex flex-col gap-5">
+          <ExamCard exams={visibleExams} />
+
           <div className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border">
             <div
               className={`size-8 rounded-full shrink-0 flex items-center justify-center${status === 'red' ? ' animate-pulse' : ''}`}
