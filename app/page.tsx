@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { RefreshCcw, ExternalLink, BookOpen, CalendarCheck, MapPin, X } from 'lucide-react';
+import { RefreshCcw, ExternalLink, BookOpen, CalendarCheck, MapPin, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useCanvasData } from '@/lib/hooks';
 import type { EnrichedAssignment } from '@/lib/canvas';
@@ -224,13 +224,21 @@ function Section({
 
 // --- Timetable helpers ---
 
-function getWeekBounds(): { monday: Date; sunday: Date } {
+function getWeekBounds(offsetWeeks = 0): { monday: Date; sunday: Date } {
   const now = new Date();
-  const day = now.getDay(); // 0=Sun, 1=Mon, ...
+  const day = now.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday);
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday + offsetWeeks * 7);
   const sunday = new Date(monday.getTime() + 6 * 86400000 + 86399999);
   return { monday, sunday };
+}
+
+function formatWeekLabel(monday: Date, sunday: Date): string {
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+  if (monday.getMonth() === sunday.getMonth()) {
+    return `${monday.toLocaleDateString('en-GB', opts)} – ${sunday.getDate()} ${sunday.toLocaleDateString('en-GB', { month: 'short' })}`;
+  }
+  return `${monday.toLocaleDateString('en-GB', opts)} – ${sunday.toLocaleDateString('en-GB', opts)}`;
 }
 
 function formatTime(iso: string): string {
@@ -300,17 +308,17 @@ function ThisWeekClasses({
   onRetry: () => void;
 }) {
   const [selectedEvent, setSelectedEvent] = useState<TimetableEvent | null>(null);
-  const { monday, sunday } = useMemo(getWeekBounds, []);
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const { monday, sunday } = useMemo(() => getWeekBounds(weekOffset), [weekOffset]);
 
   const weekEvents = useMemo(
     () => eventsInRange(events, monday, sunday),
     [events, monday, sunday]
   );
 
-  if (!loading && weekEvents.length === 0 && !error) return null;
-
   const today = new Date();
-  const todayDow = today.getDay() === 0 ? 6 : today.getDay() - 1; // 0=Mon...6=Sun
+  const todayDow = today.getDay() === 0 ? 6 : today.getDay() - 1;
 
   // Group events by day-of-week index (0=Mon)
   const byDay: TimetableEvent[][] = Array.from({ length: 7 }, () => []);
@@ -328,9 +336,32 @@ function ThisWeekClasses({
       )}
       <div className="flex flex-col gap-2.5">
         <div className="flex items-center gap-3">
-          <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-            This week&apos;s classes
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground w-28 shrink-0">
+            {weekOffset === 0 ? 'This week' : weekOffset === 1 ? 'Next week' : weekOffset === -1 ? 'Last week' : formatWeekLabel(monday, sunday)}
           </h2>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setWeekOffset(o => o - 1)}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/8 transition-colors"
+              aria-label="Previous week"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              onClick={() => setWeekOffset(0)}
+              className="text-[9px] w-8 py-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+              style={{ visibility: weekOffset !== 0 ? 'visible' : 'hidden' }}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setWeekOffset(o => o + 1)}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/8 transition-colors"
+              aria-label="Next week"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
           <div className="flex-1 h-px bg-border" />
           <a
             href="https://timetables.eur.nl"
@@ -353,10 +384,14 @@ function ThisWeekClasses({
           <Skeleton className="h-24 rounded-xl" />
         )}
 
-        {!loading && !error && (
+        {!loading && !error && weekEvents.length === 0 && (
+          <p className="text-sm text-muted-foreground">No classes scheduled this week.</p>
+        )}
+
+        {!loading && !error && weekEvents.length > 0 && (
           <div className="grid grid-cols-7 gap-1.5 max-sm:grid-cols-1">
             {WEEK_DAYS.map((label, i) => {
-              const isToday = i === todayDow;
+              const isToday = weekOffset === 0 && i === todayDow;
               const dayEvents = byDay[i];
               return (
                 <div
@@ -436,9 +471,9 @@ export default function DashboardPage() {
       {/* Page header */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="text-3xl font-bold tracking-tight">
             {user ? (
-              <>Welcome back, <span className="gradient-text">{user.name.split(' ')[0]}</span></>
+              <i>Welcome back, <span className="gradient-text">{user.name.split(' ')[0]}</span>!</i>
             ) : (
               'Dashboard'
             )}

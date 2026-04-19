@@ -87,37 +87,43 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  /* Erasmus AI deep navy palette */
+  --background: oklch(0.09 0.04 264);
+  --foreground: oklch(0.95 0.005 264);
+  --card: oklch(0.135 0.035 264);
+  --card-foreground: oklch(0.95 0.005 264);
+  --popover: oklch(0.135 0.035 264);
+  --popover-foreground: oklch(0.95 0.005 264);
+  --primary: oklch(0.95 0.005 264);
+  --primary-foreground: oklch(0.09 0.04 264);
+  --secondary: oklch(0.175 0.03 264);
+  --secondary-foreground: oklch(0.95 0.005 264);
+  --muted: oklch(0.175 0.03 264);
+  --muted-foreground: oklch(0.55 0.025 264);
+  --accent: oklch(0.175 0.03 264);
+  --accent-foreground: oklch(0.95 0.005 264);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.80 0.15 200);
+  --chart-1: oklch(0.80 0.15 200);
+  --chart-2: oklch(0.65 0.22 300);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.115 0.038 264);
+  --sidebar-foreground: oklch(0.95 0.005 264);
+  --sidebar-primary: oklch(0.80 0.15 200);
+  --sidebar-primary-foreground: oklch(0.09 0.04 264);
+  --sidebar-accent: oklch(0.175 0.03 264);
+  --sidebar-accent-foreground: oklch(0.95 0.005 264);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.80 0.15 200);
+
+  /* Brand gradient tokens */
+  --brand-cyan: #1ec8e8;
+  --brand-purple: #9333ea;
+  --brand-gradient: linear-gradient(135deg, #1ec8e8 0%, #9333ea 100%);
 }
 
 @layer base {
@@ -126,10 +132,90 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image: radial-gradient(ellipse 70% 40% at 15% 0%, oklch(0.14 0.06 264 / 0.6) 0%, transparent 70%),
+                      radial-gradient(ellipse 50% 30% at 85% 100%, oklch(0.12 0.05 300 / 0.4) 0%, transparent 70%);
   }
   html {
     @apply font-sans;
   }
+}
+
+@keyframes brand-sweep {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Gradient border-only that fills with gradient on hover */
+.btn-brand {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Gradient border via mask — only the 2px rim is visible */
+.btn-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(135deg, #1ec8e8, #9333ea, #1ec8e8);
+  background-size: 250% 250%;
+  background-position: 0% 50%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transition: opacity 0.2s ease;
+}
+
+/* Gradient fill that fades in on hover */
+.btn-brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(30,200,232,0.55) 0%, rgba(147,51,234,0.55) 100%);
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.2s ease;
+}
+
+.btn-brand:hover::before {
+  animation: brand-sweep 1.8s ease infinite;
+}
+.btn-brand:hover::after {
+  opacity: 1;
+}
+.btn-brand:disabled::before {
+  opacity: 0.3;
+  animation: none;
+}
+.btn-brand:disabled::after {
+  opacity: 0;
+}
+
+.gradient-text {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-border {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: var(--brand-gradient);
+  z-index: -1;
+  opacity: 0.3;
 }
 
 /* Canvas page body rendered inline */

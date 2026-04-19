@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import Image from 'next/image';
+import { Eye, EyeOff, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,78 @@ type TimetableStatus =
   | { type: 'success'; count: number }
   | { type: 'error'; message: string }
   | null;
+
+const TIMETABLE_GUIDE_STEPS = [
+  { src: '/timetable-eur/guide-1.png', caption: 'On timetables.eur.nl, click the sync icon (top-right)' },
+  { src: '/timetable-eur/guide-2.png', caption: 'Choose "Apple Calendar" from the dropdown' },
+  { src: '/timetable-eur/guide-3.png', caption: 'Click "Next" to continue' },
+  { src: '/timetable-eur/guide-4.png', caption: 'Copy the URL at the bottom and paste it above' },
+];
+
+const GUIDE_STEPS = [
+  { src: '/canvas-guide/guide-1.png', caption: 'Click Account (top-left), then click Settings' },
+  { src: '/canvas-guide/guide-2.png', caption: 'Scroll to "Approved integrations" → click "+ New access token"' },
+  { src: '/canvas-guide/guide-3.png', caption: 'Enter a purpose, set an expiry date → click "Generate token"' },
+  { src: '/canvas-guide/guide-4.png', caption: 'Copy the token — you won\'t be able to retrieve it after closing this dialog' },
+];
+
+function GuideCarousel({ steps }: { steps: typeof GUIDE_STEPS }) {
+  const [step, setStep] = useState(0);
+  const current = steps[step];
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="relative rounded-md overflow-hidden border border-border bg-muted/30">
+        <Image
+          src={current.src}
+          alt={current.caption}
+          width={800}
+          height={600}
+          className="w-full h-auto object-contain"
+          priority={step === 0}
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setStep((s) => Math.max(0, s - 1))}
+          disabled={step === 0}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+          aria-label="Previous step"
+        >
+          <ChevronLeft className="size-5" />
+        </button>
+        <p className="flex-1 text-sm text-muted-foreground text-center">
+          <span className="font-medium text-foreground">Step {step + 1}/{steps.length}:</span>{' '}
+          {current.caption}
+        </p>
+        <button
+          type="button"
+          onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))}
+          disabled={step === steps.length - 1}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+          aria-label="Next step"
+        >
+          <ChevronRight className="size-5" />
+        </button>
+      </div>
+      <div className="flex justify-center gap-1.5">
+        {steps.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setStep(i)}
+            className={`size-1.5 rounded-full transition-colors ${i === step ? 'bg-foreground' : 'bg-muted-foreground/30'}`}
+            aria-label={`Go to step ${i + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TokenGuide() {
+  return <GuideCarousel steps={GUIDE_STEPS} />;
+}
 
 export default function SettingsPage() {
   const [token, setToken] = useState('');
@@ -173,7 +246,17 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>How do I get a token?</CardTitle>
+              <div className="flex items-center gap-3">
+                <CardTitle>How do I get a token?</CardTitle>
+                <a
+                  href="https://canvas.eur.nl/profile/settings"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Open Canvas ↗
+                </a>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowInstructions((v) => !v)}
@@ -190,28 +273,7 @@ export default function SettingsPage() {
           </CardHeader>
           {showInstructions && (
             <CardContent>
-              <ol className="list-decimal list-inside flex flex-col gap-1.5 text-sm text-muted-foreground">
-                <li>Go to canvas.eur.nl</li>
-                <li>
-                  Click <strong className="text-foreground">Account</strong> →{' '}
-                  <strong className="text-foreground">Settings</strong>
-                </li>
-                <li>
-                  Scroll to{' '}
-                  <strong className="text-foreground">Approved Integrations</strong>
-                </li>
-                <li>
-                  Click{' '}
-                  <strong className="text-foreground">+ New Access Token</strong>
-                </li>
-                <li>
-                  Name it{' '}
-                  <strong className="text-foreground">"Companion App"</strong>,
-                  leave the expiry blank, click{' '}
-                  <strong className="text-foreground">Generate Token</strong>
-                </li>
-                <li>Copy the token and paste it above</li>
-              </ol>
+              <TokenGuide />
             </CardContent>
           )}
         </Card>
@@ -263,7 +325,17 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>How do I get my timetable URL?</CardTitle>
+              <div className="flex items-center gap-3">
+                <CardTitle>How do I get my timetable URL?</CardTitle>
+                <a
+                  href="https://timetables.eur.nl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Open timetables ↗
+                </a>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowTimetableInstructions((v) => !v)}
@@ -280,20 +352,7 @@ export default function SettingsPage() {
           </CardHeader>
           {showTimetableInstructions && (
             <CardContent>
-              <ol className="list-decimal list-inside flex flex-col gap-1.5 text-sm text-muted-foreground">
-                <li>Go to timetables.eur.nl and log in</li>
-                <li>
-                  Click <strong className="text-foreground">Connect Calendar</strong> (top right)
-                </li>
-                <li>
-                  Select <strong className="text-foreground">iCalendar</strong> from the dropdown
-                </li>
-                <li>
-                  Copy the URL that appears (starts with{' '}
-                  <code className="text-foreground">https://timetables.eur.nl/…</code>)
-                </li>
-                <li>Paste it above</li>
-              </ol>
+              <GuideCarousel steps={TIMETABLE_GUIDE_STEPS} />
             </CardContent>
           )}
         </Card>

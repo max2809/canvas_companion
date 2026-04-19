@@ -177,6 +177,8 @@ export function FilesTab({
       return next;
     });
 
+  const [downloadingSections, setDownloadingSections] = useState<Set<number>>(new Set());
+
   const cancelledRef = useRef(false);
   const extractionKeyRef = useRef(''); // prevents double-extraction on re-renders
 
@@ -385,6 +387,25 @@ export function FilesTab({
     }
   }
 
+  async function handleSectionDownload(mod: CanvasModule) {
+    const modFiles = allFileItems.filter((f) => f.moduleId === mod.id);
+    if (modFiles.length === 0 || downloadingSections.has(mod.id)) return;
+    setDownloadingSections((prev) => new Set(prev).add(mod.id));
+    const zip = new JSZip();
+    const seenNames = new Map<string, number>();
+    const folderName = sanitizeZipPath(mod.name);
+    await downloadQueue(modFiles, 3, async (item) => {
+      try {
+        const { blob, filename } = await downloadModuleFile(token, courseId, item.fileId);
+        zip.file(`${folderName}/${buildUniqueFilename(filename, seenNames)}`, blob);
+      } catch { /* skip */ }
+    });
+    try {
+      triggerDownload(await zip.generateAsync({ type: 'blob' }), `${courseCode}-${folderName}.zip`);
+    } catch { /* silent */ }
+    setDownloadingSections((prev) => { const next = new Set(prev); next.delete(mod.id); return next; });
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loadingFiles) {
@@ -432,7 +453,17 @@ export function FilesTab({
   return (
     <>
       {/* Header row */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-4">
+        {fileCount > 0 && (
+          <button
+            onClick={openDownloadAll}
+            disabled={loadingPageFiles}
+            className="btn-brand w-28 h-28 rounded-2xl flex flex-col items-center justify-center gap-2 bg-foreground/5 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            <Download className="size-8" />
+            <span className="text-xs font-medium leading-tight text-center">Download all files</span>
+          </button>
+        )}
         <p className="text-sm text-muted-foreground flex items-center gap-2">
           {fileCount > 0 && `${fileCount} file${fileCount !== 1 ? 's' : ''}`}
           {fileCount > 0 && linkCount > 0 && ' · '}
@@ -441,17 +472,9 @@ export function FilesTab({
             <RotateCw className="size-3 animate-spin opacity-50" aria-label="Scanning pages for files…" />
           )}
         </p>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => loadModules(true)} aria-label="Refresh">
-            <RotateCw className="size-4" />
-          </Button>
-          {fileCount > 0 && (
-            <Button size="sm" onClick={openDownloadAll} disabled={loadingPageFiles}>
-              <Download className="size-4" />
-              Download all files
-            </Button>
-          )}
-        </div>
+        <Button variant="ghost" size="sm" onClick={() => loadModules(true)} aria-label="Refresh" className="ml-auto">
+          <RotateCw className="size-4" />
+        </Button>
       </div>
 
       {/* Module groups */}
@@ -462,15 +485,29 @@ export function FilesTab({
           const collapsed = collapsedModules.has(mod.id);
           return (
             <div key={mod.id} className="flex flex-col gap-2">
-              <button
-                onClick={() => toggleModule(mod.id)}
-                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-fit"
-              >
-                {collapsed
-                  ? <ChevronRight className="size-3 shrink-0" />
-                  : <ChevronDown className="size-3 shrink-0" />}
-                {mod.name}
-              </button>
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => toggleModule(mod.id)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
+                >
+                  {collapsed
+                    ? <ChevronRight className="size-3 shrink-0" />
+                    : <ChevronDown className="size-3 shrink-0" />}
+                  {mod.name}
+                </button>
+                {modFiles.length > 0 && (
+                  <button
+                    onClick={() => handleSectionDownload(mod)}
+                    disabled={downloadingSections.has(mod.id)}
+                    title="Download all section files"
+                    className="btn-brand w-8 h-8 rounded-lg flex items-center justify-center bg-foreground/5 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {downloadingSections.has(mod.id)
+                      ? <RotateCw className="size-3.5 animate-spin" />
+                      : <Download className="size-3.5" />}
+                  </button>
+                )}
+              </div>
 
               {!collapsed && modFiles.map((item) => (
                 <div

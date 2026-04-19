@@ -16,6 +16,7 @@ function cacheKey(courseId: number) {
 type ManualState =
   | { status: 'loading' }
   | { status: 'not-found' }
+  | { status: 'not-extractable' }
   | { status: 'error'; message: string }
   | { status: 'paste-required'; sqillUrl: string }
   | { status: 'pasting' }
@@ -111,13 +112,153 @@ function RawSectionsCollapsible({ sections }: { sections: Record<string, string>
   );
 }
 
+function isPdfManual(data: CourseManual): boolean {
+  return data.template_version_hint.headings_present[0] === '__pdf__';
+}
+
+function FullTextCollapsible({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  if (!text) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide w-fit hover:text-foreground transition-colors"
+      >
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        Full manual text
+      </button>
+      {open && (
+        <CardRow>
+          <p className="text-xs whitespace-pre-wrap leading-relaxed font-mono text-muted-foreground max-h-[60vh] overflow-y-auto">
+            {text}
+          </p>
+        </CardRow>
+      )}
+    </div>
+  );
+}
+
+function PdfManualView({ data: m }: { data: CourseManual }) {
+  return (
+    <div className="flex flex-col gap-6">
+
+      <CardRow className="flex items-start gap-3 ring-amber-500/40">
+        <BookOpen className="size-4 text-amber-500 mt-0.5 shrink-0" />
+        <div className="flex flex-col gap-0.5">
+          <p className="text-sm font-medium">Partial extraction from PDF</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            This manual uses a non-standard format. Some fields were extracted automatically
+            but may be incomplete — expand the full text below to read the original.
+          </p>
+        </div>
+      </CardRow>
+
+      {m.course_name && (
+        <div className="flex flex-col gap-1">
+          <SectionLabel>Course</SectionLabel>
+          <p className="text-base font-semibold">{m.course_name}</p>
+        </div>
+      )}
+
+      {m.mandatory_attendance !== null && (
+        <CardRow className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs">
+            Attendance: {m.mandatory_attendance ? 'Mandatory' : 'Not mandatory'}
+          </Badge>
+        </CardRow>
+      )}
+
+      {(m.coordinator.length > 0 || m.contact_email) && (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>Contact</SectionLabel>
+          <CardRow>
+            <div className="flex flex-col gap-1 text-sm">
+              {m.coordinator.length > 0 && (
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground w-28 shrink-0">Coordinator</span>
+                  <span className="font-medium">{m.coordinator.join(', ')}</span>
+                </div>
+              )}
+              {m.contact_email && (
+                <div className="flex items-center gap-2">
+                  <Mail className="size-3.5 text-muted-foreground shrink-0" />
+                  <a
+                    href={`mailto:${m.contact_email}`}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {m.contact_email}
+                  </a>
+                </div>
+              )}
+            </div>
+          </CardRow>
+        </div>
+      )}
+
+      {m.assessments.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>Grade components (extracted)</SectionLabel>
+          {m.assessments.map((a) => <AssessmentCard key={a.name} a={a} />)}
+          <p className="text-xs text-muted-foreground px-1">
+            Weights extracted from document text — verify against the original PDF.
+          </p>
+        </div>
+      )}
+
+      {m.study_materials.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>Study materials</SectionLabel>
+          {m.study_materials.map((mat, i) => (
+            <CardRow key={i} className="flex flex-col gap-1">
+              <p className="text-sm">{mat.citation}</p>
+              {mat.isbn && <p className="text-xs font-mono text-muted-foreground">ISBN {mat.isbn}</p>}
+            </CardRow>
+          ))}
+        </div>
+      )}
+
+      {m.important_dates.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>Important dates</SectionLabel>
+          {m.important_dates.map((d, i) => (
+            <CardRow key={i} className="flex items-center justify-between gap-3 text-sm">
+              <span>{d.label}</span>
+              <span className="font-mono tabular-nums text-xs text-muted-foreground">
+                {new Date(d.start).toLocaleString('en-GB', { dateStyle: 'medium' })}
+              </span>
+            </CardRow>
+          ))}
+        </div>
+      )}
+
+      <FullTextCollapsible text={m.raw_sections.full_text ?? ''} />
+
+      {m.warnings.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {m.warnings.map((w, i) => (
+            <div key={i} className="px-4 py-3 rounded-xl bg-card ring-1 ring-amber-500/40 text-xs text-muted-foreground">
+              {w}
+            </div>
+          ))}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 export function ManualTab({ courseId }: { courseId: number }) {
   const [state, setState] = useState<ManualState>({ status: 'loading' });
 
   useEffect(() => {
     const cached = Storage.getWithTTL<CourseManual>(cacheKey(courseId), CACHE_TTL_MS);
     if (cached && 'course_code' in cached && Array.isArray(cached.examination_format)) {
-      setState({ status: 'ok', data: cached });
+      if (cached.template_version_hint.headings_present.length === 0) {
+        setState({ status: 'not-extractable' });
+      } else {
+        setState({ status: 'ok', data: cached });
+      }
       return;
     }
 
@@ -128,7 +269,10 @@ export function ManualTab({ courseId }: { courseId: number }) {
     }
 
     setState({ status: 'loading' });
-    fetch(`/api/manual/${courseId}`, { headers: { 'x-canvas-token': token } })
+    fetch(`/api/manual/${courseId}`, {
+      headers: { 'x-canvas-token': token },
+      signal: AbortSignal.timeout(60_000),
+    })
       .then(async (res) => {
         if (res.status === 404) { setState({ status: 'not-found' }); return; }
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -141,6 +285,8 @@ export function ManualTab({ courseId }: { courseId: number }) {
           return;
         }
         const data = body as unknown as CourseManual;
+        const isEmpty = data.template_version_hint.headings_present.length === 0;
+        if (isEmpty) { setState({ status: 'not-extractable' }); return; }
         Storage.setWithTTL(cacheKey(courseId), data);
         setState({ status: 'ok', data });
       })
@@ -217,6 +363,19 @@ export function ManualTab({ courseId }: { courseId: number }) {
     );
   }
 
+  if (state.status === 'not-extractable') {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground text-center">
+        <BookOpen className="size-12 opacity-20" />
+        <p className="text-sm font-medium text-foreground">Manual found but format not supported</p>
+        <p className="text-xs max-w-sm leading-relaxed">
+          This course uses a PDF manual that doesn&apos;t follow the standard template.
+          Open it directly in Canvas to read it.
+        </p>
+      </div>
+    );
+  }
+
   if (state.status === 'not-found') {
     return (
       <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
@@ -233,6 +392,10 @@ export function ManualTab({ courseId }: { courseId: number }) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">{state.message}</p>
     );
+  }
+
+  if (isPdfManual(state.data)) {
+    return <PdfManualView data={state.data} />;
   }
 
   const { data: m } = state;

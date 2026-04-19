@@ -38,35 +38,37 @@ function CourseCard({
   return (
     <Link
       href={`/courses/${course.id}`}
-      className="rounded-xl bg-card ring-1 ring-foreground/10 overflow-hidden block hover:ring-foreground/20 transition-all"
+      className="rounded-xl bg-card border border-border overflow-hidden block transition-all duration-150 hover:border-white/15 hover:bg-card/80 group"
     >
-      <div className="p-4 flex flex-col gap-2">
+      <div className="p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <Badge variant="outline" className="font-mono text-xs uppercase">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-secondary text-muted-foreground border border-border">
             {code}
-          </Badge>
-          <div className="flex items-center gap-1.5">
+          </span>
+          <div className="flex items-center gap-2">
             <button
               aria-label="Hide course"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onHide(); }}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground/40 hover:text-muted-foreground transition-colors"
             >
               <EyeOff className="size-3.5" />
             </button>
             <div
               role="img"
               aria-label={`${status} health: ${reason}`}
-              className={`size-3 rounded-full${status === 'red' ? ' animate-pulse' : ''}`}
-              style={{ backgroundColor: TL[status] }}
+              className={`size-2.5 rounded-full${status === 'red' ? ' animate-pulse' : ''}`}
+              style={{ backgroundColor: TL[status], boxShadow: `0 0 6px ${TL[status]}60` }}
             />
-            <ChevronRight className="size-4 text-muted-foreground" />
+            <ChevronRight className="size-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
           </div>
         </div>
         <div>
-          <p className="font-semibold text-base leading-snug">{course.name}</p>
-          <p className="text-sm text-muted-foreground mt-0.5">{reason}</p>
+          <p className="font-semibold text-sm leading-snug text-foreground">{course.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{reason}</p>
         </div>
-        {statParts && <p className="text-xs text-muted-foreground">{statParts}</p>}
+        {statParts && (
+          <p className="text-[11px] text-muted-foreground border-t border-border pt-2.5">{statParts}</p>
+        )}
       </div>
     </Link>
   );

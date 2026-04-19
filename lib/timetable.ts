@@ -44,8 +44,8 @@ function guessEventType(title: string, description: string | null): string | nul
 }
 
 function parseCourseCodeFromTitle(title: string): string | null {
-  // Match anywhere in the title (not just at the start) to handle varied EUR formats
-  const match = title.match(/\b([A-Z]{2,4}\d{4})\b/);
+  // Match anywhere in the title; support varied EUR faculty code formats (2–6 letters + 3–6 digits)
+  const match = title.match(/\b([A-Z]{2,6}\d{3,6})\b/);
   if (!match) return null;
   return parseCourseCode(match[1]);
 }
@@ -126,7 +126,9 @@ function makeEvent(
 
   const endIso = endDate ? endDate.toJSDate().toISOString() : startIso;
 
-  const courseCodeShort = parseCourseCodeFromTitle(title);
+  // Prefer the explicit "Course code:" field in the description (EUR timetable format)
+  const courseCodeFromDesc = parseDescriptionField(description, 'Course code');
+  const courseCodeShort = courseCodeFromDesc !== null ? courseCodeFromDesc : parseCourseCodeFromTitle(title);
 
   return {
     id,

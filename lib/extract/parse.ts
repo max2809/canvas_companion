@@ -465,6 +465,141 @@ function parseImportantDates(text: string): ImportantDate[] {
 }
 
 // ---------------------------------------------------------------------------
+// PDF fallback helpers (used by parsePdfCourseManual)
+// ---------------------------------------------------------------------------
+
+function extractCourseName(text: string): string {
+  const SKIP = /university|erasmus|school|faculty|department|rotterdam|^page\s+\d+/i;
+  const DATE_LINE = /^\d{4}[-/]\d{2}|^(Q|TB|Block|Period)\s*\d/i;
+  const COURSE_CODE = /^[A-Z]{2,4}\d{4,}/;
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 15);
+  for (const line of lines) {
+    if (SKIP.test(line) || DATE_LINE.test(line) || COURSE_CODE.test(line)) continue;
+    if (line.length >= 5 && line.length <= 100) return line;
+  }
+  return '';
+}
+
+function extractGradeComponents(text: string): Assessment[] {
+  const candidates: { name: string; weight: number }[] = [];
+  const seen = new Set<string>();
+
+  function addCandidate(rawName: string, rawWeight: string) {
+    const name = rawName.trim()
+      .replace(/^(?:the|a|an)\s+/i, '')
+      .replace(/\s+grade$/i, '')
+      .trim();
+    const weight = parseInt(rawWeight);
+    const key = name.toLowerCase();
+    if (name.length >= 2 && weight > 0 && weight <= 100 && !seen.has(key)) {
+      seen.add(key);
+      candidates.push({ name, weight });
+    }
+  }
+
+  // Pass 1a: "X counts for / determines / is worth N%"
+  const VERB_RE =
+    /\b([A-Za-z][\w ]{2,39}?)\s+(?:counts?\s+for|accounts?\s+for|determines?|is\s+worth|grade(?:\s+is)?)\s+(?:the\s+remaining\s+)?(\d{1,3})\s*%/gi;
+  for (const m of text.matchAll(VERB_RE)) addCandidate(m[1], m[2]);
+
+  // Pass 1b: "X (N%)" — parenthetical weight
+  const PAREN_RE = /\b([A-Za-z][\w ]{2,39}?)\s+\((\d{1,3})\s*%\)/gi;
+  for (const m of text.matchAll(PAREN_RE)) addCandidate(m[1], m[2]);
+
+  // Pass 2 (line-level): only if sentence passes found nothing
+  if (candidates.length === 0) {
+    const LINE_RE = /^(\d{1,3})\s*%\s+(.{3,60}?)$|^(.{3,60}?)\s+(\d{1,3})\s*%\s*$/gm;
+    for (const m of text.matchAll(LINE_RE)) {
+      const [name, rawWeight] = m[1] ? [m[2], m[1]] : [m[3], m[4]];
+      addCandidate(name, rawWeight);
+    }
+  }
+
+  const textLower = text.toLowerCase();
+
+  return candidates.map(({ name, weight }) => {
+    // Check for resit availability near this assessment name
+    const nameIdx = textLower.indexOf(name.toLowerCase());
+    let resit = false;
+    let resit_note: string | null = null;
+    if (nameIdx !== -1) {
+      const ctx = text.slice(Math.max(0, nameIdx - 400), nameIdx + name.length + 400);
+      const noResit = /no\s+(?:opportunity|chance|option)\s+to\s+(?:resit|retake)/i.test(ctx);
+      if (!noResit && /\b(?:resit|retake)\b/i.test(ctx)) {
+        resit = true;
+        const noteMatch = ctx.match(/resit\s+(?:can\s+)?(?:replace[^.;,\n]{0,80})/i);
+        if (noteMatch) resit_note = noteMatch[0].trim().replace(/\s+/g, ' ');
+      }
+    }
+
+    // Check for minimum grade near this assessment name
+    let minimum_grade: number | null = null;
+    if (nameIdx !== -1) {
+      const ctx = text.slice(Math.max(0, nameIdx - 300), nameIdx + name.length + 300);
+      const minMatch = ctx.match(/minimum\s+(?:grade\s+(?:of\s+)?)?(\d+(?:[.,]\d+)?)/i);
+      if (minMatch) minimum_grade = parseFloat(minMatch[1].replace(',', '.'));
+    }
+
+    return {
+      name,
+      weighting_factor: weight,
+      form: '',
+      group_or_individual: '',
+      formative_or_summative: '',
+      mandatory: false,
+      minimum_grade,
+      resit,
+      resit_note,
+      company_interaction: false,
+      feedback_by: '',
+      goals_assessed: [],
+      deadlines: [],
+    };
+  });
+}
+
+function extractAttendance(text: string): boolean | null {
+  if (/attendance\s+(?:is\s+)?(?:not\s+(?:compulsory|mandatory|required)|optional|voluntary)/i.test(text)) return false;
+  if (/attendance\s+(?:is\s+)?(?:compulsory|mandatory|required|obligatory)|\battendance\s+requirement\b/i.test(text)) return true;
+  return null;
+}
+
+function extractCoordinatorNearEmail(text: string): string[] {
+  const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const HONORIFIC = /^(?:Dr\.?|Prof\.?|Professor|ir\.?|drs\.?|mr\.?|dhr\.?|mw\.?)\s+/i;
+  // Allow accented chars (À-ÿ), initials (single uppercase), and multi-word names
+  const NAME_LIKE = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'-]*(?:\s+[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'-]*){1,5}$/;
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  function tryAdd(raw: string) {
+    const candidate = raw.replace(/[\s()\[\]{}<>,.;:]+$/, '').trim();
+    if (candidate.length < 3 || candidate.length > 60) return;
+    if (candidate.includes('@') || candidate.endsWith(':')) return;
+    if (candidate.split(/\s+/).length > 6) return;
+    if ((HONORIFIC.test(candidate) || NAME_LIKE.test(candidate)) && !seen.has(candidate)) {
+      seen.add(candidate);
+      names.push(candidate);
+    }
+  }
+
+  for (const m of text.matchAll(EMAIL_RE)) {
+    // 1. Same line: text immediately before the email on the same line
+    const lineStart = text.lastIndexOf('\n', m.index!) + 1;
+    const beforeOnLine = text.slice(lineStart, m.index!).replace(/[(\[{]+$/, '').trim();
+    if (beforeOnLine) tryAdd(beforeOnLine);
+
+    // 2. Lines before the email
+    const before = text.slice(Math.max(0, m.index! - 300), m.index!);
+    const lines = before.split('\n').map((l) => l.trim()).filter(Boolean);
+    for (const line of lines.slice(-5)) {
+      tryAdd(line);
+    }
+  }
+  return names;
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -536,6 +671,58 @@ export function parseCourseManual(rawText: string): CourseManual {
     template_version_hint: {
       export_date: new Date().toISOString().slice(0, 10),
       headings_present: Object.keys(sections),
+    },
+  };
+}
+
+export function parsePdfCourseManual(rawText: string): CourseManual {
+  const text = normalize(rawText);
+  const warnings: string[] = ['Parsed from plain PDF — data may be incomplete'];
+
+  const studyMaterials = parseStudyMaterials(text);
+  const importantDates = parseImportantDates(text);
+  const workload = parseWorkload(text);
+
+  const rsmlEmail = parseContactEmail(text);
+  const broadEmail = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] ?? null;
+  const contactEmail = rsmlEmail ?? broadEmail;
+
+  const courseName = extractCourseName(text);
+  const assessments = extractGradeComponents(text);
+  const mandatoryAttendance = extractAttendance(text);
+  const coordinator = extractCoordinatorNearEmail(text);
+
+  const weightSum = assessments.reduce((s, a) => s + (a.weighting_factor ?? 0), 0);
+  if (assessments.length > 0 && weightSum !== 100) {
+    warnings.push(`Grade components sum to ${weightSum}% — verify against original PDF`);
+  }
+
+  return {
+    course_code: '',
+    course_name: courseName,
+    teaching_block: null,
+    course_load_ec: null,
+    coordinator,
+    teaching_staff: [],
+    course_activities: [],
+    examination_format: [],
+    mandatory_attendance: mandatoryAttendance,
+    pre_requisites: null,
+    pre_requisites_note: null,
+    contact_email: contactEmail,
+    genai: null,
+    learning_goals: [],
+    workload,
+    modules: [],
+    assessments,
+    sdgs: [],
+    study_materials: studyMaterials,
+    important_dates: importantDates,
+    raw_sections: { full_text: text },
+    warnings,
+    template_version_hint: {
+      export_date: new Date().toISOString().slice(0, 10),
+      headings_present: ['__pdf__'],
     },
   };
 }

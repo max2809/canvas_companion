@@ -44,7 +44,8 @@ export interface EnrichedAssignment extends CanvasAssignment {
 }
 
 export function parseCourseCode(name: string): string {
-  const match = name.match(/^([A-Z]{2,4}\d{4})/);
+  // Capture the leading alphanumeric token — handles both classic (BT1209) and RSM-style (BT3T2103, B3EL123) codes
+  const match = name.match(/^([A-Z][A-Z\d]*)/);
   return match ? match[1] : name.slice(0, 6);
 }
 
