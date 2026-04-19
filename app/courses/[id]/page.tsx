@@ -240,10 +240,17 @@ function CourseDetailContent() {
 
   const hasPassedExam = courseExams.some((e) => new Date(e.start) < now);
 
-  const visibleExams = [
-    ...courseExams.filter((e) => new Date(e.start) >= thirtyDaysAgo),
-    ...(hasPassedExam ? courseResits.filter((e) => new Date(e.start) >= thirtyDaysAgo) : []),
+  const upcomingExamEvents = [
+    ...courseExams.filter((e) => new Date(e.start) >= now),
+    ...(hasPassedExam ? courseResits.filter((e) => new Date(e.start) >= now) : []),
   ].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+  const passedExamEvents = [
+    ...courseExams.filter((e) => new Date(e.start) < now && new Date(e.start) >= thirtyDaysAgo),
+    ...(hasPassedExam ? courseResits.filter((e) => new Date(e.start) < now && new Date(e.start) >= thirtyDaysAgo) : []),
+  ].sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
+
+  const visibleExams = [...upcomingExamEvents, ...passedExamEvents];
   const { status, reason, nextActions, stats } = health;
 
   const sorted = [...courseAssignments].sort((a, b) => {
