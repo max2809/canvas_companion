@@ -5,13 +5,22 @@ export const StorageKeys = {
   ASSIGNMENTS: 'cc.assignments',
   LAST_SYNC: 'cc.lastSync',
   HIDDEN_COURSES: 'cc.hiddenCourses',
+  INITIALIZED: 'cc.initialized',
+  KNOWN_COURSE_IDS: 'cc.knownCourseIds',
+  TIMETABLE_URL: 'cc.timetableUrl',
+  TIMETABLE_EVENTS: 'cc.timetableEvents',
 } as const;
 
 export function get<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return raw as unknown as T;
+    }
   } catch {
     return null;
   }
@@ -46,6 +55,22 @@ export function toggleCourseHidden(courseId: number): number[] {
     : [...current, courseId];
   set(StorageKeys.HIDDEN_COURSES, next);
   return next;
+}
+
+export function isInitialized(): boolean {
+  return get<boolean>(StorageKeys.INITIALIZED) === true;
+}
+
+export function markInitialized(): void {
+  set(StorageKeys.INITIALIZED, true);
+}
+
+export function getKnownCourseIds(): number[] {
+  return get<number[]>(StorageKeys.KNOWN_COURSE_IDS) ?? [];
+}
+
+export function setKnownCourseIds(ids: number[]): void {
+  set(StorageKeys.KNOWN_COURSE_IDS, ids);
 }
 
 export function clear(key: string): void {

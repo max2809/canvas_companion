@@ -18,12 +18,19 @@ import {
   set,
   getWithTTL,
   setWithTTL,
+  clear,
   clearAll,
   getHiddenCourseIds,
   toggleCourseHidden,
+  isInitialized,
+  markInitialized,
+  getKnownCourseIds,
+  setKnownCourseIds,
 } from './storage';
+import { fetchTimetable, TimetableEvent } from './timetable';
 
 const TTL_MS = 15 * 60 * 1000;
+const TIMETABLE_TTL_MS = 60 * 60 * 1000;
 
 export interface CanvasDataState {
   user: CanvasUser | null;
@@ -34,8 +41,18 @@ export interface CanvasDataState {
   loading: boolean;
   error: string | null;
   lastSync: Date | null;
+  needsOnboarding: boolean;
+  newCourses: CanvasCourse[];
   refresh: () => Promise<void>;
   toggleHidden: (courseId: number) => void;
+  completeOnboarding: (activeIds: number[]) => void;
+  acknowledgeNewCourse: (courseId: number, hide: boolean) => void;
+  timetableUrl: string | null;
+  timetableEvents: TimetableEvent[];
+  timetableLoading: boolean;
+  timetableError: string | null;
+  setTimetableUrl: (url: string | null) => void;
+  refreshTimetable: () => Promise<void>;
 }
 
 export function useCanvasData(): CanvasDataState {
@@ -43,9 +60,16 @@ export function useCanvasData(): CanvasDataState {
   const [allCourses, setAllCourses] = useState<CanvasCourse[]>([]);
   const [allAssignments, setAllAssignments] = useState<EnrichedAssignment[]>([]);
   const [hiddenCourseIds, setHiddenCourseIds] = useState<number[]>([]);
+  const [initialized, setInitialized] = useState(false);
+  const [knownCourseIds, setKnownCourseIdsState] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+
+  const [timetableUrl, setTimetableUrlState] = useState<string | null>(null);
+  const [timetableEvents, setTimetableEvents] = useState<TimetableEvent[]>([]);
+  const [timetableLoading, setTimetableLoading] = useState(false);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async (bypassCache: boolean) => {
     const token = get<string>(StorageKeys.TOKEN);
@@ -117,20 +141,110 @@ export function useCanvasData(): CanvasDataState {
     }
   }, []);
 
+  const doFetchTimetable = useCallback(async (url: string, bypassCache: boolean) => {
+    if (!bypassCache) {
+      const cached = getWithTTL<TimetableEvent[]>(StorageKeys.TIMETABLE_EVENTS, TIMETABLE_TTL_MS);
+      if (cached) {
+        setTimetableEvents(cached);
+        return;
+      }
+    }
+
+    setTimetableLoading(true);
+    try {
+      const events = await fetchTimetable(url);
+      setWithTTL(StorageKeys.TIMETABLE_EVENTS, events);
+      setTimetableEvents(events);
+      setTimetableError(null);
+    } catch (err) {
+      setTimetableError(err instanceof Error ? err.message : 'Failed to load timetable');
+    } finally {
+      setTimetableLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setHiddenCourseIds(getHiddenCourseIds());
+    setInitialized(isInitialized());
+    setKnownCourseIdsState(getKnownCourseIds());
     fetchAll(false);
-  }, [fetchAll]);
+
+    const storedUrl = get<string>(StorageKeys.TIMETABLE_URL);
+    if (storedUrl) {
+      setTimetableUrlState(storedUrl);
+      const cached = getWithTTL<TimetableEvent[]>(StorageKeys.TIMETABLE_EVENTS, TIMETABLE_TTL_MS);
+      if (cached) {
+        setTimetableEvents(cached);
+      } else {
+        doFetchTimetable(storedUrl, false);
+      }
+    }
+  }, [fetchAll, doFetchTimetable]);
 
   const refresh = useCallback(() => fetchAll(true), [fetchAll]);
+
+  const refreshTimetable = useCallback(async () => {
+    const url = get<string>(StorageKeys.TIMETABLE_URL);
+    if (!url) return;
+    await doFetchTimetable(url, true);
+  }, [doFetchTimetable]);
+
+  const setTimetableUrl = useCallback((url: string | null) => {
+    if (url === null) {
+      clear(StorageKeys.TIMETABLE_URL);
+      clear(StorageKeys.TIMETABLE_EVENTS);
+      setTimetableUrlState(null);
+      setTimetableEvents([]);
+      setTimetableError(null);
+      return;
+    }
+    set(StorageKeys.TIMETABLE_URL, url);
+    setTimetableUrlState(url);
+    doFetchTimetable(url, true);
+  }, [doFetchTimetable]);
 
   const toggleHidden = useCallback((courseId: number) => {
     const next = toggleCourseHidden(courseId);
     setHiddenCourseIds(next);
   }, []);
 
+  const completeOnboarding = useCallback((activeIds: number[]) => {
+    const toHide = allCourses
+      .filter((c) => !activeIds.includes(c.id))
+      .map((c) => c.id);
+    const currentHidden = getHiddenCourseIds();
+    const newHidden = [...new Set([...currentHidden, ...toHide])];
+    set(StorageKeys.HIDDEN_COURSES, newHidden);
+    const allIds = allCourses.map((c) => c.id);
+    setKnownCourseIds(allIds);
+    markInitialized();
+    setHiddenCourseIds(newHidden);
+    setKnownCourseIdsState(allIds);
+    setInitialized(true);
+  }, [allCourses]);
+
+  const acknowledgeNewCourse = useCallback((courseId: number, hide: boolean) => {
+    const updated = [...knownCourseIds, courseId];
+    setKnownCourseIds(updated);
+    setKnownCourseIdsState(updated);
+    if (hide) {
+      const next = toggleCourseHidden(courseId);
+      setHiddenCourseIds(next);
+    }
+  }, [knownCourseIds]);
+
   const courses = allCourses.filter((c) => !hiddenCourseIds.includes(c.id));
   const assignments = allAssignments.filter((a) => !hiddenCourseIds.includes(a.course_id));
+  const needsOnboarding = !initialized && !loading && allCourses.length > 0;
+  const newCourses = initialized
+    ? allCourses.filter((c) => !knownCourseIds.includes(c.id))
+    : [];
 
-  return { user, courses, allCourses, hiddenCourseIds, assignments, loading, error, lastSync, refresh, toggleHidden };
+  return {
+    user, courses, allCourses, hiddenCourseIds, assignments, loading, error, lastSync,
+    needsOnboarding, newCourses,
+    refresh, toggleHidden, completeOnboarding, acknowledgeNewCourse,
+    timetableUrl, timetableEvents, timetableLoading, timetableError,
+    setTimetableUrl, refreshTimetable,
+  };
 }

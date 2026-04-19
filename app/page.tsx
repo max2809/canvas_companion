@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
-import { RefreshCcw, ExternalLink, BookOpen, CalendarCheck } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { RefreshCcw, ExternalLink, BookOpen, CalendarCheck, MapPin, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCanvasData } from '@/lib/hooks';
 import type { EnrichedAssignment } from '@/lib/canvas';
+import type { TimetableEvent } from '@/lib/timetable';
+import { eventsInRange } from '@/lib/timetable';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -14,6 +16,12 @@ const COURSE_HUES = [200, 30, 145, 280, 15, 170];
 
 function courseColor(courseId: number): string {
   const hash = (courseId * 2654435761) >>> 0;
+  return `hsl(${COURSE_HUES[hash % COURSE_HUES.length]}, 65%, 60%)`;
+}
+
+function courseColorByCode(code: string): string {
+  let hash = 0;
+  for (let i = 0; i < code.length; i++) hash = (hash * 31 + code.charCodeAt(i)) >>> 0;
   return `hsl(${COURSE_HUES[hash % COURSE_HUES.length]}, 65%, 60%)`;
 }
 
@@ -86,12 +94,10 @@ function groupAssignments(assignments: EnrichedAssignment[]): Groups {
   const recentlySubmitted: EnrichedAssignment[] = [];
 
   for (const a of assignments) {
-    // Skip omit_from_final_grade items more than 2 days away
     if (a.omit_from_final_grade && (!a.due_at || new Date(a.due_at) > twoDaysFromNow)) continue;
 
     const submitted = isSubmitted(a);
 
-    // Recently submitted: within last 7 days
     if (submitted) {
       if (a.submission?.submitted_at && new Date(a.submission.submitted_at) >= sevenDaysAgo) {
         recentlySubmitted.push(a);
@@ -104,7 +110,6 @@ function groupAssignments(assignments: EnrichedAssignment[]): Groups {
       ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate())
       : null;
 
-    // Overdue: past due_at, missing or unsubmitted
     if (dueDate && dueDate < now) {
       const missing = a.submission?.missing === true;
       const unsubmitted = !a.submission || a.submission.workflow_state === 'unsubmitted';
@@ -116,19 +121,16 @@ function groupAssignments(assignments: EnrichedAssignment[]): Groups {
 
     if (!dueDayStart) continue;
 
-    // Today
     if (dueDayStart.getTime() === todayStart.getTime()) {
       today.push(a);
       continue;
     }
 
-    // This week: tomorrow through 7 days from today
     if (dueDayStart >= tomorrowStart && dueDayStart <= in7) {
       thisWeek.push(a);
       continue;
     }
 
-    // Upcoming: 8–30 days
     if (dueDayStart >= in8 && dueDayStart < in31) {
       upcoming.push(a);
     }
@@ -150,20 +152,22 @@ function AssignmentCard({ a, muted }: { a: EnrichedAssignment; muted?: boolean }
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-xl bg-card text-sm text-card-foreground ring-1 ring-foreground/10 px-4 py-3',
-        muted && 'opacity-60'
+        'flex items-center gap-3 rounded-xl bg-card text-sm text-card-foreground border border-border px-4 py-3 transition-all duration-150 hover:border-white/12 hover:bg-card/80',
+        muted && 'opacity-50'
       )}
     >
-      <div className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      <div className="size-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
       <div className="flex flex-col min-w-0 flex-1">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-mono text-xs text-muted-foreground uppercase shrink-0">
+          <span
+            className="font-mono text-[10px] font-semibold uppercase tracking-wider shrink-0 px-1.5 py-0.5 rounded"
+            style={{ background: `${color}22`, color }}
+          >
             {a.course_code_short}
           </span>
-          <span className="text-muted-foreground text-xs shrink-0">·</span>
-          <span className="font-medium truncate">{a.name}</span>
+          <span className="font-medium truncate text-foreground">{a.name}</span>
         </div>
-        <span className="text-xs text-muted-foreground truncate">{a.course_name}</span>
+        <span className="text-xs text-muted-foreground truncate mt-0.5">{a.course_name}</span>
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -176,7 +180,7 @@ function AssignmentCard({ a, muted }: { a: EnrichedAssignment; muted?: boolean }
           rel="noopener noreferrer"
           className={buttonVariants({ variant: 'ghost', size: 'sm' })}
         >
-          Open in Canvas <ExternalLink className="size-3 ml-1" />
+          Open <ExternalLink className="size-3 ml-1" />
         </a>
       </div>
     </div>
@@ -196,16 +200,20 @@ function Section({
 }) {
   if (items.length === 0) return null;
   return (
-    <div className="flex flex-col gap-2">
-      <h2
-        className={cn(
-          'text-xs font-semibold uppercase tracking-widest',
-          accent ? 'text-red-500' : 'text-muted-foreground'
-        )}
-      >
-        {title}
-      </h2>
-      <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-3">
+        <h2
+          className={cn(
+            'text-[10px] font-bold uppercase tracking-[0.15em]',
+            accent ? 'text-tl-red' : 'text-muted-foreground'
+          )}
+        >
+          {title}
+        </h2>
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-[10px] text-muted-foreground">{items.length}</span>
+      </div>
+      <div className="flex flex-col gap-1.5">
         {items.map((a) => (
           <AssignmentCard key={`${a.course_id}-${a.id}`} a={a} muted={muted} />
         ))}
@@ -214,8 +222,208 @@ function Section({
   );
 }
 
+// --- Timetable helpers ---
+
+function getWeekBounds(): { monday: Date; sunday: Date } {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 1=Mon, ...
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday);
+  const sunday = new Date(monday.getTime() + 6 * 86400000 + 86399999);
+  return { monday, sunday };
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+interface EventDetailModalProps {
+  event: TimetableEvent;
+  onClose: () => void;
+}
+
+function EventDetailModal({ event, onClose }: EventDetailModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full mx-4 flex flex-col gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="font-semibold text-base leading-tight">{event.title}</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
+            <X className="size-4" />
+          </button>
+        </div>
+        {event.eventTypeGuess && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-secondary text-muted-foreground w-fit">
+            {event.eventTypeGuess}
+          </span>
+        )}
+        <p className="text-sm text-muted-foreground">
+          {event.isAllDay
+            ? new Date(event.start).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+            : `${new Date(event.start).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · ${formatTime(event.start)}–${formatTime(event.end)}`
+          }
+        </p>
+        {event.location && (
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <MapPin className="size-3.5 shrink-0" />
+            {event.location}
+          </div>
+        )}
+        {event.description && (
+          <p className="text-xs text-muted-foreground border-t border-border pt-3 whitespace-pre-line line-clamp-6">
+            {event.description}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThisWeekClasses({
+  events,
+  loading,
+  error,
+  onRetry,
+}: {
+  events: TimetableEvent[];
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const [selectedEvent, setSelectedEvent] = useState<TimetableEvent | null>(null);
+  const { monday, sunday } = useMemo(getWeekBounds, []);
+
+  const weekEvents = useMemo(
+    () => eventsInRange(events, monday, sunday),
+    [events, monday, sunday]
+  );
+
+  if (!loading && weekEvents.length === 0 && !error) return null;
+
+  const today = new Date();
+  const todayDow = today.getDay() === 0 ? 6 : today.getDay() - 1; // 0=Mon...6=Sun
+
+  // Group events by day-of-week index (0=Mon)
+  const byDay: TimetableEvent[][] = Array.from({ length: 7 }, () => []);
+  for (const ev of weekEvents) {
+    const d = new Date(ev.start);
+    const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    byDay[dow].push(ev);
+  }
+  for (const arr of byDay) arr.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+  return (
+    <>
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-center gap-3">
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+            This week&apos;s classes
+          </h2>
+          <div className="flex-1 h-px bg-border" />
+          <a
+            href="https://timetables.eur.nl"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+          >
+            View full timetable <ExternalLink className="size-2.5" />
+          </a>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-3 rounded-lg bg-destructive/15 border border-destructive/20 px-4 py-3">
+            <p className="flex-1 text-sm text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button>
+          </div>
+        )}
+
+        {loading && (
+          <Skeleton className="h-24 rounded-xl" />
+        )}
+
+        {!loading && !error && (
+          <div className="grid grid-cols-7 gap-1.5 max-sm:grid-cols-1">
+            {WEEK_DAYS.map((label, i) => {
+              const isToday = i === todayDow;
+              const dayEvents = byDay[i];
+              return (
+                <div
+                  key={label}
+                  className={cn(
+                    'flex flex-col gap-1 rounded-xl p-2 min-h-16',
+                    isToday
+                      ? 'bg-card border border-white/10'
+                      : 'bg-card/40 border border-border'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'text-[10px] font-bold uppercase tracking-wider mb-0.5',
+                      isToday ? 'text-foreground' : 'text-muted-foreground'
+                    )}
+                  >
+                    {label}
+                  </span>
+                  {dayEvents.length === 0 ? (
+                    <span className="text-[10px] text-muted-foreground/40">—</span>
+                  ) : (
+                    dayEvents.map((ev) => {
+                      const color = ev.courseCodeShort
+                        ? courseColorByCode(ev.courseCodeShort)
+                        : 'hsl(220,10%,60%)';
+                      return (
+                        <button
+                          key={ev.id}
+                          onClick={() => setSelectedEvent(ev)}
+                          className="text-left flex flex-col gap-0.5 rounded-lg px-1.5 py-1 hover:bg-white/5 transition-colors w-full"
+                        >
+                          {!ev.isAllDay && (
+                            <span className="text-[9px] text-muted-foreground">
+                              {formatTime(ev.start)}–{formatTime(ev.end)}
+                            </span>
+                          )}
+                          <span className="text-[10px] font-medium leading-tight truncate" style={{ color }}>
+                            {ev.title}
+                          </span>
+                          {ev.courseCodeShort && (
+                            <span
+                              className="text-[9px] font-mono font-semibold px-1 rounded"
+                              style={{ background: `${color}22`, color }}
+                            >
+                              {ev.courseCodeShort}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function DashboardPage() {
-  const { assignments, loading, error, refresh, user } = useCanvasData();
+  const {
+    assignments, loading, error, refresh, user,
+    timetableUrl, timetableEvents, timetableLoading, timetableError, refreshTimetable,
+  } = useCanvasData();
 
   const groups = useMemo(() => groupAssignments(assignments), [assignments]);
   const weekCount = groups.today.length + groups.thisWeek.length;
@@ -226,19 +434,28 @@ export default function DashboardPage() {
   return (
     <>
       {/* Page header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-semibold italic">
-            {user ? `Welcome, ${user.name}!` : 'Dashboard'}
+          <h1 className="text-2xl font-bold tracking-tight">
+            {user ? (
+              <>Welcome back, <span className="gradient-text">{user.name.split(' ')[0]}</span></>
+            ) : (
+              'Dashboard'
+            )}
           </h1>
           {!noToken && (
-            <p className="text-muted-foreground mt-1 text-sm">
-              {todayLabel()} · <span className="font-mono">{weekCount}</span> assignment{weekCount !== 1 ? 's' : ''} due this week
+            <p className="text-muted-foreground mt-1.5 text-sm">
+              {todayLabel()} · <span className="text-foreground/80 font-medium">{weekCount}</span> assignment{weekCount !== 1 ? 's' : ''} due this week
             </p>
           )}
         </div>
         {!noToken && (
-          <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { refresh(); refreshTimetable(); }}
+            disabled={loading}
+          >
             <RefreshCcw className={cn('size-4', loading && 'animate-spin')} />
             Refresh
           </Button>
@@ -291,16 +508,26 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Assignment sections */}
-          {hasData && (
-            <div className="flex flex-col gap-8">
-              <Section title="Overdue" accent items={groups.overdue} />
-              <Section title="Today" items={groups.today} />
-              <Section title="This Week" items={groups.thisWeek} />
-              <Section title="Upcoming" items={groups.upcoming} />
-              <Section title="Recently Submitted" muted items={groups.recentlySubmitted} />
-            </div>
-          )}
+          {/* Timetable section + assignment sections */}
+          <div className="flex flex-col gap-8">
+            {timetableUrl && (
+              <ThisWeekClasses
+                events={timetableEvents}
+                loading={timetableLoading}
+                error={timetableError}
+                onRetry={refreshTimetable}
+              />
+            )}
+            {hasData && (
+              <>
+                <Section title="Overdue" accent items={groups.overdue} />
+                <Section title="Today" items={groups.today} />
+                <Section title="This Week" items={groups.thisWeek} />
+                <Section title="Upcoming" items={groups.upcoming} />
+                <Section title="Recently Submitted" muted items={groups.recentlySubmitted} />
+              </>
+            )}
+          </div>
         </>
       )}
     </>

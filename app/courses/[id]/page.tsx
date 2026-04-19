@@ -20,11 +20,12 @@ import { FilesTab } from './files-tab';
 import { PagesTab } from './pages-tab';
 import { AnnouncementsSection } from './announcements-section';
 import { ManualTab } from './manual-tab';
+import { ScheduleTab } from './schedule-tab';
 import type { EnrichedAssignment } from '@/lib/canvas';
 
 const TL = { red: '#f87171', yellow: '#fbbf24', green: '#4ade80' } as const;
 
-const TABS = ['overview', 'assignments', 'files', 'pages', 'manual'] as const;
+const TABS = ['overview', 'assignments', 'files', 'schedule', 'pages', 'manual'] as const;
 type Tab = (typeof TABS)[number];
 
 function humanizeDue(due_at: string | null): string {
@@ -126,14 +127,14 @@ function CourseDetailContent() {
           Back to Courses
         </Link>
         <div className="flex flex-col gap-1.5">
-          <Badge variant="outline" className="font-mono text-xs uppercase w-fit">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md bg-secondary text-muted-foreground border border-border w-fit">
             {code}
-          </Badge>
-          <h1 className="text-2xl font-bold leading-tight">{course.name}</h1>
+          </span>
+          <h1 className="text-2xl font-bold leading-tight gradient-text inline-block">{course.name}</h1>
           <div className="flex items-center gap-2">
             <div
-              className={`size-2.5 rounded-full shrink-0${status === 'red' ? ' animate-pulse' : ''}`}
-              style={{ backgroundColor: TL[status] }}
+              className={`size-2 rounded-full shrink-0${status === 'red' ? ' animate-pulse' : ''}`}
+              style={{ backgroundColor: TL[status], boxShadow: `0 0 6px ${TL[status]}60` }}
             />
             <span className="text-sm text-muted-foreground">{reason}</span>
           </div>
@@ -146,11 +147,14 @@ function CourseDetailContent() {
           <button
             key={tab}
             onClick={() => setTab(tab)}
-            className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+            className={`px-4 py-2 text-sm font-medium capitalize transition-all duration-150 border-b-2 -mb-px ${
               activeTab === tab
-                ? 'border-foreground text-foreground'
+                ? 'text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
+            style={activeTab === tab ? {
+              borderImage: 'linear-gradient(90deg, #1ec8e8, #9333ea) 1',
+            } : {}}
           >
             {tab}
           </button>
@@ -160,13 +164,15 @@ function CourseDetailContent() {
       {/* Overview tab */}
       {activeTab === 'overview' && (
         <div className="flex flex-col gap-5">
-          <div className="flex items-center gap-4 p-4 rounded-xl bg-card ring-1 ring-foreground/10">
+          <div className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border">
             <div
-              className={`size-10 rounded-full shrink-0${status === 'red' ? ' animate-pulse' : ''}`}
-              style={{ backgroundColor: TL[status] }}
-            />
+              className={`size-8 rounded-full shrink-0 flex items-center justify-center${status === 'red' ? ' animate-pulse' : ''}`}
+              style={{ backgroundColor: `${TL[status]}22`, boxShadow: `0 0 12px ${TL[status]}40` }}
+            >
+              <div className="size-3 rounded-full" style={{ backgroundColor: TL[status] }} />
+            </div>
             <div>
-              <p className="font-semibold text-lg capitalize">{status === 'red' ? 'At risk' : status === 'yellow' ? 'Attention needed' : 'On track'}</p>
+              <p className="font-semibold text-base">{status === 'red' ? 'At risk' : status === 'yellow' ? 'Attention needed' : 'On track'}</p>
               <p className="text-sm text-muted-foreground">{reason}</p>
             </div>
           </div>
@@ -178,7 +184,7 @@ function CourseDetailContent() {
               { label: 'Submitted', value: stats.submitted, color: stats.submitted > 0 ? TL.green : undefined },
               { label: 'Total', value: stats.total, color: undefined },
             ] as const).map(({ label, value, color }) => (
-              <div key={label} className="rounded-xl bg-card ring-1 ring-foreground/10 p-4">
+              <div key={label} className="rounded-xl bg-card border border-border p-4">
                 <p className="text-2xl font-bold" style={{ color }}>{value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
               </div>
@@ -191,7 +197,7 @@ function CourseDetailContent() {
               {nextActions.map((action) => (
                 <div
                   key={action}
-                  className="flex items-start gap-3 px-4 py-3 rounded-xl bg-card ring-1 ring-foreground/10"
+                  className="flex items-start gap-3 px-4 py-3 rounded-xl bg-card border border-border"
                 >
                   <div className="size-1.5 rounded-full bg-foreground/40 mt-1.5 shrink-0" />
                   <span className="text-sm">{action}</span>
@@ -213,7 +219,7 @@ function CourseDetailContent() {
             sorted.map((a) => (
               <div
                 key={a.id}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-card ring-1 ring-foreground/10 text-sm"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-card border border-border text-sm"
               >
                 <AssignmentIcon a={a} />
                 <span className="flex-1 min-w-0 truncate">{a.name}</span>
@@ -235,6 +241,9 @@ function CourseDetailContent() {
 
       {/* Files tab */}
       {activeTab === 'files' && <FilesTab courseId={courseId} courseCode={code} />}
+
+      {/* Schedule tab */}
+      {activeTab === 'schedule' && <ScheduleTab courseCode={code} />}
 
       {/* Pages tab */}
       {activeTab === 'pages' && <PagesTab courseId={courseId} />}
